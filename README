@@ -1,0 +1,173 @@
+Compiling instructions:
+
+
+1. Dependencies:
+
+The code relies on the presence of a building enviroment for the C language (compiler, standard libraries).
+Two other libraires are used by the code:
+  
+  - GSL (Gnu Scientific Library) mostly for vector/matrix operations
+  - Glib which is a general C library
+  
+Both libraries are open source and can be downloaded for free from the following locations:
+
+gsl - http://www.gnu.org/software/gsl/
+Glib - http://ftp.gnome.org/pub/gnome/sources/glib/2.32/
+
+Compilation and instllation may depend on the presence of other software.
+
+Most linux distributions allow downloading and installing of these libraries through their package management systems.
+Be sure the download the development packages as well if you use these method.
+
+
+The code relies also on openMP for concurrency. This library is open source and can also be download or installed using the package manager.
+
+
+
+
+2. Compiling:
+
+
+There is no Makefile. You just need to complie all the source files and link them to a single executable.
+With gcc for example: 
+
+  gcc -o runme -std=gnu99  -Wall -fopenmp -fexpensive-optimizations -ffast-math -fomit-frame-pointer -O3 -mmmx -msse -msse2 -msse3 -mfpmath=sse  -march=corei7  -mtune=corei7  \
+  `pkg-config --cflags glib-2.0` main.c Simulation.c Lattice.c Substrate.c Adsorbate.c  Parameters.c Quench.c\
+  /usr/local/lib/libgsl.a /usr/local/lib/libgslcblas.a  -lglib-2.0  -lm
+
+  
+The first line invoke gcc with some compilation options (show all warning, use opnemp, optimization)
+`pkg-config --cflags glib-2.0` in the second line use the pkg-config command (standard in most linux distributions) to pass the path to the Glib library and include files. 
+It is followed by a list of the source files to compile.
+The last line tells the compiler the location of the static version of the GSL library files (static linking improves performance) and to link dynamically against glib and 
+C math library.
+
+The name of the executable is "runme".
+
+
+
+3. Running the simulation:
+
+
+Generaly just run from the terminal './runme PFILE' where PFILE is the parameters file which includes input for the program.
+The PFILE is parsed by Glib and has several sections, each starting with [Section name] and continues until the next section begins or the file ends.
+The parameters determine runtime, interaction parameters, masses and such. Notice the section FILES which has the location where the output of the
+simulation will be written too. It needs to be set for each user individualy.
+
+When ever the simulation is being run, the seed for each run is generated in the following way:
+
+Seed parameter from Pfile + temperature of current run + number of iteration.
+
+The first part is determined from a value taken from the PFILE. The second part depends on the temperature used. In case we run several iterations
+with the same temperature (currently the program can only iterate over a list of temperatures), the number of the iteration is added.
+
+This allows using the same seed when running repeatedly with the same parameters to allow reproducablity of the results.
+
+PFILE has the following format (it uses glib to parse the content):
+
+
+-------------------------------------------------
+
+[Geometry]
+
+Num_of_Cells = 8;8;3
+# In Angstroms
+Cell_Size = 3.61;3.61;3.61
+
+[Time]
+
+# In units of Psec
+Timestep = 0.001
+Runtime = 50
+# In units of Timestep
+Lat_Relax_Time = 1000
+Lat_Sample_Rate = 1
+Ads_Sample_Rate = 1
+Temp_Rescale_Time = 5
+Vel_Scale_factor = 0.25
+
+[Physics]
+# In N/m
+Lattice_Force_Constant=15
+# In eV, 1/A, A
+Morse_Parameters=0.135;0.875;3.3
+# in Kelvin
+Temperatures=150;175;200;225;250;275;300;325;350
+# Boltmann const in eV/K 
+Kb= 0.000086173324
+# lattice atoms mass in amu
+Lmass = 65.546 
+# Adsorbate's mass in amu
+Amass = 23 
+
+
+[Files]
+
+# loation in home folder to save output
+Savedir = /Documents/MDdata/run5
+
+[Simulation]
+
+# how many runs in parallel.
+cpus = 3
+# how many times to run the simulation for a single configuration
+parts=30 
+# random number generator seed
+Seed = 3
+# how many adsorbates
+Num_Adatoms = 1
+# type of simulation
+simtype = MD
+# If GetPES is zero, not trying to extract PES
+# If GetPES is 1, fix adsorbate at a given (x,y,z) point in a grid of (GridXY*GridXY*GridZ) points. apply quenching and et the system relax until the average kinetic energy per
+# atom is below 10^-E energy units of the simulation. out of the 100 z points take the avg lowest potential values and average on them.
+# If GetPES is 2, fix adsorbate at a given (x,y) point in a grid of (GridXY*GridXY) points. apply quenching and et the system relax until the average kinetic energy per
+# atom is below 10^-E energy units of the simulation. 
+# Replace GridXY;GridZ;E;avg with appropriate values
+GetPES2 = 2;GridXY;GridZ;E;avg
+# Do we wish to track the adsorbate's trajectory 
+Track_Adsorbate= 0
+# Do we wish to track the potential of the adsorbate along its trajectory
+Track_Adsorbate_Potential = 0
+# Do we with to track the substrate atoms trajectories
+Track_Substrate= 0
+# Do we wish to calculate the phonon density of state (tracking the substrate atoms velocities)
+PDOS = 0
+
+-------------------------------------------------
+
+
+each line assign a value (integer, string, list, etc.) to a single parameter.
+each section starts with [title] and end when the next section starts or the file ends.
+Lines starting with # are ignored.
+List items are seperated by ";"
+
+
+
+OUTPUT:
+
+The programs writes periodicaly (depending on the sample rate set in the PFILE) the position of the adsorbates and/or substrate atoms.
+The output is a text file with a single value in each line, i.e the position of the adsorbate is written as
+
+X1
+Y1
+Z1
+X2
+Y2
+Z2
+.
+.
+.
+Xn
+Yn
+Zn
+
+with a total of 3n lines where n= RUNTIME/Ads_Sample_Rate.
+
+For the case when there are more than one adsorbate or for the substrate atoms it is more complicated, as we have an additional index (the number
+of the atom) which gives (3*m)*n lines, where m in the number of substrate atoms or adsorbates.
+
+The data is saved in a row major form (the program is written in C). It can easily be loaded to an analysis program like Python or Matlab and convert
+to a multi-dimenssional arry.
+
+The analysis is done with other programs.
